@@ -16,8 +16,8 @@ airlines = airlines %>%
 # original source: https://ais-faa.opendata.arcgis.com/maps/e747ab91a11045e8b3f8a3efd093d3b5
 federal = read_csv("https://uwmadison.box.com/shared/static/fiqrtcxd9khjw49h46fx013e652ki2f0.csv")
 
-# because there are some discrepancies in the codes between the two datasets, adjust
-# to align the federal dataset's codes with the airlines dataset's codes
+# because there are some discrepancies in the codes between the two data sets, adjust
+# to align the federal data set's codes with the airlines data set's codes
 
 replace_airport_code <- function(code_to_replace, replacement_code) {
   federal %>% 
@@ -36,7 +36,7 @@ federal[which(federal$IDENT == "UTA"),] = replace_airport_code("UTA","UTM")
 federal = federal %>%
   filter((IDENT %in% airlines$AirportFrom) | (IDENT %in% airlines$AirportTo))
 
-# check to make sure that all airlines in airlines dataset are in the federal dataset
+# a check to make sure that all airlines in airlines data set are in the federal data set
 # unique(airlines$AirportFrom[which(!(airlines$AirportFrom %in% federal$IDENT))])
 # unique(airlines$AirportTo[which(!(airlines$AirportTo %in% federal$IDENT))])
 
@@ -98,8 +98,7 @@ ui_tweaks <-  list(tags$head(
 
 ui <- fluidPage(ui_tweaks,
                 titlePanel(
-                  h1(strong("Airplane Delays Analysis Dashboard"),
-                     align = "center"),
+                  tags$u(tags$h1(strong("Airplane Delays Analysis Dashboard"),align = "center")),
                   windowTitle = "Airplane Delays Analysis Dashboard"
                 ),
                 tags$br(),
@@ -136,7 +135,8 @@ ui <- fluidPage(ui_tweaks,
                       selectizeInput("airport_codes", "Airport Codes", 
                                      NULL, 
                                      multiple = T, 
-                                     options = list(placeholder = "Select values to plot"))
+                                     options = list(placeholder = "Select values to plot")),
+                      p(tags$i("Select more options from above multi-select input to compare flight traffic across airports"))
                     )
                   ),
                   mainPanel(plotOutput("airport_popularity_line_plot"))
@@ -183,16 +183,21 @@ server <- function(input, output, session) {
   })
   
   # output$histogram <- renderPlot(histogram_fun(airline_sub()))
+  
   output$scatterplot = renderPlot({
-    ggplot(airline_sub()) +
+    airline_sub() %>%
+      mutate(Class = Class == 1) %>%
+      ggplot() +
       geom_jitter(aes(Length, DayOfWeek, col=Class), alpha = .5, height = .25) +
-      scale_y_discrete(limits=seq(1,7,1)) +
-      labs(x = "Flight Length", y = "Day of Week")
+      scale_y_discrete(limits = seq(1,7,1)) +
+      labs(x = "Flight Length", y = "Day of Week", col = "Delayed?")
   })
   
   output$dt <- DT::renderDataTable(
-    airline_sub(),
-    colnames = c("Flight #", "Time", "Length (Min)", "Airline key", "Departing from", "Arriving to", "Day of the week", "Late?", "selected")
+    airline_sub() %>%
+      mutate(Class = Class == 1) %>%
+      select(-selected),
+    colnames = c("Flight #", "Time", "Length (Min)", "Airline key", "Departing from", "Arriving to", "Day of the week", "Delayed?")
   )
   
   filter_letter <- reactive({input$filter_letter})
