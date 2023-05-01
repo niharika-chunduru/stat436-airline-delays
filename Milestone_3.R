@@ -242,7 +242,7 @@ ui <- fluidPage(
                             sort(unique(airport_popularity$Airport)), 
                             multiple = T, 
                             options = list(placeholder = "Select values to plot"), 
-                            selected=c("Newark Liberty Intl", "John F Kennedy Intl", "Chicago O'hare Intl"),
+                            selected=c("Newark Liberty Intl", "John F Kennedy Intl"),
                             width = "100%")
            ),
            plotOutput("airport_popularity_line_plot")
@@ -303,7 +303,7 @@ server <- function(input, output, session) {
     }
     
     leaflet(merge) %>% 
-      setView(lng = -94, lat = 38, zoom = 4) %>%
+      setView(lng = -90, lat = 38, zoom = 4) %>%
       addTiles() %>% 
       addCircleMarkers(
         ~longitude_col,
