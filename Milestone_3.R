@@ -11,31 +11,32 @@ theme_set(theme_classic())
 
 airlines = read_csv("https://uwmadison.box.com/shared/static/24nrm1vrwz8bf3cmr0tzciwx3n2wiik1.csv")
 
+# preprocess data - change days, reencode airline codes, change times
 airlines = airlines %>%
   mutate(Delayed = sapply(Class, function(x){if (x == 0) return("No") else return("Yes")})) %>%
   mutate(DayOfWeek = sapply(DayOfWeek, function(x){
-                                                    if(x==1){
-                                                      return("Monday")
-                                                    }
-                                                    else if (x==2){
-                                                      return("Tuesday")
-                                                    }
-                                                    else if (x==3){
-                                                      return("Wednesday")
-                                                    }
-                                                    else if (x==4){
-                                                      return("Thursday")
-                                                    }
-                                                    else if (x==5){
-                                                      return("Friday")
-                                                    }
-                                                    else if (x==6){
-                                                      return("Saturday")
-                                                    }
-                                                    else if (x==7){
-                                                      return("Sunday")
-                                                    }
-                                                  })) %>%
+    if(x==1){
+      return("Monday")
+    }
+    else if (x==2){
+      return("Tuesday")
+    }
+    else if (x==3){
+      return("Wednesday")
+    }
+    else if (x==4){
+      return("Thursday")
+    }
+    else if (x==5){
+      return("Friday")
+    }
+    else if (x==6){
+      return("Saturday")
+    }
+    else if (x==7){
+      return("Sunday")
+    }
+  })) %>%
   mutate(DayOfWeek = factor(DayOfWeek, levels = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"))) %>%
   mutate(Airline = recode(Airline,
                           "DL" = "Delta Airlines",
@@ -59,7 +60,7 @@ airlines = airlines %>%
   )) %>%
   mutate(Hours = Time %/% 60) %>%
   mutate(Minutes = Time %% 60) %>%
-  mutate(Minutes = sapply(Minutes, function(x){if(x==0) return("00") else return(x)})) %>%
+  mutate(Minutes = sapply(Minutes, function(x){if(x<10) return(paste(0,x,sep="")) else return(x)})) %>%
   mutate(Time = paste(Hours, Minutes, sep = ":")) %>%
   select(-Flight, -Class, -Hours, -Minutes) 
 
@@ -92,10 +93,6 @@ federal = replace_airport_names()
 federal = federal %>% 
   filter((IDENT %in% airlines$AirportFrom) | (IDENT %in% airlines$AirportTo))
 
-# a check to make sure that all airlines in airlines data set are in the federal data set
-# unique(airlines$AirportFrom[which(!(airlines$AirportFrom %in% federal$IDENT))])
-# unique(airlines$AirportTo[which(!(airlines$AirportTo %in% federal$IDENT))])
-
 # this block of code converts the character longitude and latitude to doubles for use with sf
 federal$LATITUDE = str_replace(federal$LATITUDE, "N", "")
 federal$LONGITUDE = str_replace(federal$LONGITUDE, "W", "")
@@ -119,6 +116,7 @@ federal = federal %>%
   mutate(LATITUDE  = reformatted_location_column(federal$LATITUDE), 
          LONGITUDE = -1*reformatted_location_column(federal$LONGITUDE))
 
+# create new dataframe from original data plus the federal names and coordinates
 joined_data <- airlines %>% 
   left_join(federal, by = c("AirportFrom" = "IDENT")) %>%
   left_join(federal, by = c("AirportTo" = "IDENT")) %>%
@@ -126,7 +124,8 @@ joined_data <- airlines %>%
 
 colnames(joined_data) <- c("TimeOfDeparture", "LengthOfFlight", "Airline", "AirportFrom", "AirportTo", "DayOfWeek", "Delayed", "AirportNameFrom", "LatitudeFrom", "LongitudeFrom", "AirportNameTo", "LatitudeTo", "LongitudeTo")
 
-airport_popularity = joined_data %>% # head(1000) %>% 
+# create a tidy dataframe with airport, day of the week, and number of flights for columns
+airport_popularity = joined_data %>% 
   select(AirportNameFrom, AirportNameTo, DayOfWeek) %>% 
   pivot_longer(c(AirportNameFrom, AirportNameTo), names_to = "_", values_to = 'Airport') %>% 
   select(Airport, DayOfWeek) %>% 
@@ -187,9 +186,9 @@ ui_tweaks <-
           font-size:12px;
           margin-right:.5rem !important;
         }"
-  ))))
+      ))))
 
-### Defines the app
+### Defines the app, encodes where each plot and each user interface renders and their properties
 ui <- fluidPage(
   theme = bs_theme(
     bootswatch = "simplex",
@@ -254,6 +253,7 @@ ui <- fluidPage(
   ),
 )
 
+# this function defines the proportion of delayed flights for all airports filtered by departure/destination distinction
 get_merged_df <- function(airport_category) {
   
   if(airport_category=='AirportNameFrom') {
@@ -282,15 +282,17 @@ get_merged_df <- function(airport_category) {
   merge
 }
 
+# server that renders all of the plots
 server <- function(input, output, session) {
   airport_category <- reactive({input$airport_category})
   
-  # Render map
+  # Render map with standardized legend with color of points reflecting the proportions of delays for each airport whether they are a destination or departure airport
   output$map <- renderLeaflet({
     merge <- get_merged_df(airport_category())
     pal <- colorBin(palette = "Spectral", domain = merge$proportion_delayed, 
-                       reverse = TRUE, bins=seq(0.0,1.0,0.1))
+                    reverse = TRUE, bins=seq(0.0,1.0,0.1))
     
+    # Merging the information to display on the popup
     if (airport_category()=="AirportNameFrom"){
       latitude_col <- merge$LatitudeFrom
       longitude_col <- merge$LongitudeFrom
@@ -324,6 +326,7 @@ server <- function(input, output, session) {
       )
   })
   
+  # creates a subsample of the data based on selected airline for the density plot
   airline_sub <- reactive({
     airlines %>%
       mutate(
@@ -331,7 +334,7 @@ server <- function(input, output, session) {
       ) %>%
       filter(selected == TRUE)
   })
-  
+  # density plot output
   output$density_plot = renderPlot({
     ggplot(slice_sample(airline_sub(), prop = .25)) +
       geom_density(aes(Length, ..density.., fill=Delayed), alpha = .3) +
@@ -349,17 +352,19 @@ server <- function(input, output, session) {
       )
   }, bg = "transparent")
   
+  # render data table, with specific column names
   output$dt <- DT::renderDataTable(
     {
       airline_sub() %>%
-      select(-selected)
+        select(-selected)
     },
     rownames = FALSE,
     colnames = c("Time", "Length (Min)", "Airline", "Departing from", "Arriving to", "Day of the week", "Late?")
   )
   
   airport_names <- reactive({ input$airport_names})
-
+  
+  # renders line plot based on airport names in selectizeInput
   output$airport_popularity_line_plot <- renderPlot({
     airport_popularity %>%
       filter(Airport %in% airport_names()) %>%
